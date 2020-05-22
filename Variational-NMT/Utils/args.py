@@ -106,6 +106,12 @@ def parse_train_args(parser):
     group.add_argument('--batch_size', type=int, default=64,
                        help='Maximum batch size for training')
 
+    group.add_argument('--patient_cnt', type=int, default=5,
+                        help='Cnt patinet number for training')
+    
+    group.add_argument('--log_step', type=int, default=50,
+                        help='logging step for training')
+
     group.add_argument('--valid_batch_size', type=int, default=32,
                        help='Maximum batch size for training')
 
@@ -163,7 +169,6 @@ def parse_train_args(parser):
 
 def parse_network_args(parser):
     group = parser.add_argument_group('Network')
-
 
     group.add_argument('--enc_num_layers', type=int, default=2,
                        help='Number of layers in the encoder')

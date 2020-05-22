@@ -2,6 +2,7 @@ import sys
 import math
 import torch
 import torch.nn as nn
+import os 
 
 import torch.nn.functional as F
 from NMT.Statistics import Statistics
@@ -40,6 +41,7 @@ class Trainer(object):
         Returns:
             stats (Statistics): epoch loss statistics
         """
+
         self.model.train()
        
         total_stats = Statistics()
@@ -51,6 +53,7 @@ class Trainer(object):
             ref = batch.trg[1:]
             kld_loss = 0.
             normalization = batch.batch_size
+            
             if isinstance(self.model, VRNMTModel):
                 outputs, _, _, kld_loss = self.model(
                             src, src_lengths, trg)
@@ -72,12 +75,11 @@ class Trainer(object):
             self.optim.step()
 
             del loss, outputs, probs
-
             
             report_stats(
                 batch_stats, epoch, idx+1, num_batches, 
                 self.progress_step, self.optim.lr)
-            
+
             total_stats.update(batch_stats)
             self.progress_step += 1
         
@@ -174,5 +176,5 @@ class Trainer(object):
         #            '%s_acc_%.2f_loss_%.2f_e%d.pt'
         #            % (config.save_model, valid_stats.accuracy(),
         #               valid_stats.loss, epoch))
-        if epoch == config.epochs:
-            torch.save(checkpoint, '%s.pt'% config.save_model)
+        # if epoch == config.epochs:
+        torch.save(checkpoint, '%s.pt'% config.save_model)

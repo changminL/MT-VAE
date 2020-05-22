@@ -100,7 +100,6 @@ class DataSet(list):
 
     def _numericalize(self, words, stoi):
         return  [1 if x not in stoi else stoi[x] for x in words] 
-        
 
     def numericalize(self, src_w2id, trg_w2id):
         for i, example in enumerate(self):
@@ -183,11 +182,11 @@ class DataBatchIterator(object):
             trg, max_trg_Ls, self.trg_vocab.stoi, add_bos=True, add_eos=True) for _, trg in pairs]
 
         batch = Batch()
-        batch.src = torch.LongTensor(src).transpose(0, 1).cuda(3)
-        batch.trg = torch.LongTensor(trg).transpose(0, 1).cuda(3)
+        batch.src = torch.LongTensor(src).transpose(0, 1).to('cuda')
+        batch.trg = torch.LongTensor(trg).transpose(0, 1).to('cuda')
         
-        batch.src_Ls = torch.LongTensor(src_Ls).cuda(3)
-        batch.trg_Ls = torch.LongTensor(trg_Ls).cuda(3)
+        batch.src_Ls = torch.LongTensor(src_Ls).to('cuda')
+        batch.trg_Ls = torch.LongTensor(trg_Ls).to('cuda')
         return batch
 
 

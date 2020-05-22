@@ -8,6 +8,7 @@ import argparse
 
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 
 from Utils.utils import trace
 from Utils.utils import check_save_path
@@ -31,6 +32,10 @@ def train_model(model, optimizer, loss_func,
 
     trainer = Trainer(model, loss_func, optimizer, config)
 
+    best_ppl = float('inf')
+    patient_cnt = 0
+    writer = SummaryWriter(log_dir=config.workspace)
+
     for epoch in range(1, config.epochs + 1):
         train_iter = iter(train_data_iter)
         valid_iter = iter(valid_data_iter)
@@ -40,7 +45,7 @@ def train_model(model, optimizer, loss_func,
             train_iter, epoch, train_data_iter.num_batches)
 
         print('')
-        trace('Epoch %d, Train acc: %g, ppl: %g' %
+        trace('Epoch %d, Train acc: %g, ppl: %g'%
               (epoch, train_stats.accuracy(), train_stats.ppl()))
 
         # validate
@@ -54,7 +59,15 @@ def train_model(model, optimizer, loss_func,
 
         valid_stats = trainer.validate(valid_iter, translator, builder)
         trace('Epoch %d, Valid acc: %g, ppl: %g' %
-              (epoch, valid_stats.accuracy(), valid_stats.ppl(), ))
+              (epoch, valid_stats.accuracy(), valid_stats.ppl()))
+        
+        writer.add_scalar('Train/acc', train_stats.accuracy(), epoch)
+        writer.add_scalar('Train/ppl', train_stats.ppl(), epoch)
+        writer.add_scalar('Train/loss', train_stats.loss, epoch)
+        writer.add_scalar('Valid/acc', valid_stats.accuracy(), epoch)
+        writer.add_scalar('Valid/ppl', valid_stats.ppl(), epoch)
+        writer.add_scalar('Valid/loss', valid_stats.loss, epoch)
+        writer.add_scalar('LR', optimizer.lr.loss, epoch)
 
         # # log
         # train_stats.log("train", config.model_name, optimizer.lr)
@@ -63,8 +76,17 @@ def train_model(model, optimizer, loss_func,
         # update the learning rate
         trainer.lr_step(valid_stats.ppl(), epoch)
 
-        # dump a checkpoint if needed.
-        trainer.dump_checkpoint(epoch, config, train_stats)
+        if best_ppl > valid_stats.ppl():
+            # Renew best perplexity! 
+            # dump a checkpoint if needed.
+            best_ppl = valid_stats.ppl()
+            trainer.dump_checkpoint(epoch, config, train_stats)
+        else: 
+            patient_cnt += 1 
+
+        if patient_cnt > config.patient_cnt:
+            break
+        
 
 
 def build_optimizer(model, config):
