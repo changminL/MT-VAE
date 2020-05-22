@@ -34,7 +34,7 @@ def train_model(model, optimizer, loss_func,
 
     best_ppl = float('inf')
     patient_cnt = 0
-    writer = SummaryWriter(log_dir=config.workspace)
+    writer = SummaryWriter(log_dir=config.save_log)
 
     for epoch in range(1, config.epochs + 1):
         train_iter = iter(train_data_iter)
@@ -67,7 +67,7 @@ def train_model(model, optimizer, loss_func,
         writer.add_scalar('Valid/acc', valid_stats.accuracy(), epoch)
         writer.add_scalar('Valid/ppl', valid_stats.ppl(), epoch)
         writer.add_scalar('Valid/loss', valid_stats.loss, epoch)
-        writer.add_scalar('LR', optimizer.lr.loss, epoch)
+        writer.add_scalar('LR', optimizer.lr, epoch)
 
         # # log
         # train_stats.log("train", config.model_name, optimizer.lr)

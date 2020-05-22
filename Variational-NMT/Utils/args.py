@@ -112,6 +112,9 @@ def parse_train_args(parser):
     group.add_argument('--log_step', type=int, default=50,
                         help='logging step for training')
 
+    group.add_argument('--save_log', default='output/model', type=str,
+                       help="tensorboard directiory")
+
     group.add_argument('--valid_batch_size', type=int, default=32,
                        help='Maximum batch size for training')
 
