@@ -54,7 +54,7 @@ class Optimizer(object):
                     self.optimizer.state[p]['sum'] = self.optimizer\
                         .state[p]['sum'].fill_(self.adagrad_accum)
         elif self.method == 'Adadelta':
-            self.optimizer = optim.Adadelta(self.params, lr=self.lr)
+            self.optimizer = optim.Adadelta(self.params, lr=self.lr, rho=0.95)
         elif self.method == 'Adam':
             self.optimizer = optim.Adam(self.params, lr=self.lr,
                                         betas=self.betas, eps=1e-9)

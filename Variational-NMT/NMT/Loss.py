@@ -39,7 +39,7 @@ class NMTLoss(nn.Module):
             :`NMT.Statistics`: validation loss statistics
 
         """
-        ce_loss = self.criterion(probs, golds.view(-1))
+        ce_loss = self.criterion(probs, golds.reshape(-1))
         
         loss = ce_loss + self.kld_weight * kld_loss
         loss = loss.div(normalization)
@@ -48,7 +48,7 @@ class NMTLoss(nn.Module):
             "KLDLoss":float(kld_loss)/normalization
             }
         del ce_loss, kld_loss
-        batch_stats = self.create_stats(float(loss), probs, golds.view(-1), loss_dict)
+        batch_stats = self.create_stats(float(loss), probs, golds.reshape(-1), loss_dict)
         return loss, batch_stats
 
     def create_stats(self, loss, probs, golds, loss_dict):

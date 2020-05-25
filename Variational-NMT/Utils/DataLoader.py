@@ -42,6 +42,7 @@ class Vocab(object):
             self.vocab_size += 1
         
         self.itos = {i:w for w, i in self.stoi.items()}
+        print(self.lang, self.vocab_size)
         
     def load_pretrained_embedding(self, embed_path, embed_dim):
         self.weights = np.zeros((self.vocab_size, int(embed_dim)))
@@ -74,10 +75,21 @@ class DataSet(list):
         self.src_lang = config.src_lang
         self.trg_lang = config.trg_lang
         self.dataset = dataset
-        self.data_path = (
-            os.path.join(self.config.data_path, dataset + "." + self.src_lang),
-            os.path.join(self.config.data_path, dataset + "." + self.trg_lang)
-            )
+        if dataset == "train":
+            self.data_path = (
+                os.path.join(self.config.data_path, dataset + "." + self.src_lang),
+                os.path.join(self.config.data_path, dataset + "." + self.trg_lang)
+                )
+        elif dataset == "test":
+            self.data_path = (
+                os.path.join(self.config.data_path, "newstest2014." + self.src_lang),
+                os.path.join(self.config.data_path, "newstest2014." + self.trg_lang)
+                )
+        elif dataset == "valid":
+            self.data_path = (
+                os.path.join(self.config.data_path, "newstest2013." + self.src_lang),
+                os.path.join(self.config.data_path, "newstest2013." + self.trg_lang)
+                )
         super(DataSet, self).__init__(*args)
 
     def read(self):
