@@ -24,8 +24,8 @@ from fairseq.modules import (
     LayerNorm,
     PositionalEmbedding,
     SinusoidalPositionalEmbedding,
-    TransformerDecoderLayer,
-    TransformerEncoderLayer,
+    TransformerVAEDecoderLayer,
+    TransformerVAEEncoderLayer,
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
@@ -35,7 +35,7 @@ DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
 
-@register_model("transformer")
+@register_model("transformer_vae")
 class TransformerModel(FairseqEncoderDecoderModel):
     """
     Transformer model from `"Attention Is All You Need" (Vaswani, et al, 2017)
@@ -52,40 +52,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
         :ref: fairseq.models.transformer_parser
         :prog:
     """
-
-    @classmethod
-    def hub_models(cls):
-        # fmt: off
-
-        def moses_subword(path):
-            return {
-                'path': path,
-                'tokenizer': 'moses',
-                'bpe': 'subword_nmt',
-            }
-
-        def moses_fastbpe(path):
-            return {
-                'path': path,
-                'tokenizer': 'moses',
-                'bpe': 'fastbpe',
-            }
-
-        return {
-            'transformer.wmt14.en-fr': moses_subword('https://dl.fbaipublicfiles.com/fairseq/models/wmt14.en-fr.joined-dict.transformer.tar.bz2'),
-            'transformer.wmt16.en-de': 'https://dl.fbaipublicfiles.com/fairseq/models/wmt16.en-de.joined-dict.transformer.tar.bz2',
-            'transformer.wmt18.en-de': moses_subword('https://dl.fbaipublicfiles.com/fairseq/models/wmt18.en-de.ensemble.tar.gz'),
-            'transformer.wmt19.en-de': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.ensemble.tar.gz'),
-            'transformer.wmt19.en-ru': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.ensemble.tar.gz'),
-            'transformer.wmt19.de-en': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.ensemble.tar.gz'),
-            'transformer.wmt19.ru-en': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.ensemble.tar.gz'),
-            'transformer.wmt19.en-de.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.single_model.tar.gz'),
-            'transformer.wmt19.en-ru.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.single_model.tar.gz'),
-            'transformer.wmt19.de-en.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.single_model.tar.gz'),
-            'transformer.wmt19.ru-en.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.single_model.tar.gz'),
-        }
-        # fmt: on
-
     def __init__(self, args, encoder, decoder):
         super().__init__(encoder, decoder)
         self.args = args
@@ -237,11 +203,11 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_encoder(cls, args, src_dict, embed_tokens):
-        return TransformerEncoder(args, src_dict, embed_tokens)
+        return TransformerVAEEncoder(args, src_dict, embed_tokens)
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
-        return TransformerDecoder(
+        return TransformerVAEDecoder(
             args,
             tgt_dict,
             embed_tokens,
@@ -415,10 +381,10 @@ class TransformerEncoder(FairseqEncoder):
 
         # encoder layers
         for layer in self.layers:
-            x = layer(x, encoder_padding_mask)
+            x, R = layer(x, encoder_padding_mask)
             if return_all_hiddens:
                 assert encoder_states is not None
-                encoder_states.append(x)
+                encoder_states.append([x, R])
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -880,7 +846,7 @@ def Linear(in_features, out_features, bias=True):
     return m
 
 
-@register_model_architecture("transformer", "transformer")
+@register_model_architecture("transformer_vae", "transformer_vae")
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
@@ -925,7 +891,7 @@ def base_architecture(args):
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
 
-@register_model_architecture("transformer", "transformer_iwslt_de_en")
+@register_model_architecture("transformer_vae", "transformer_vae_iwslt_de_en")
 def transformer_iwslt_de_en(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 1024)
@@ -938,13 +904,13 @@ def transformer_iwslt_de_en(args):
     base_architecture(args)
 
 
-@register_model_architecture("transformer", "transformer_wmt_en_de")
+@register_model_architecture("transformer_vae", "transformer_vae_wmt_en_de")
 def transformer_wmt_en_de(args):
     base_architecture(args)
 
 
 # parameters used in the "Attention Is All You Need" paper (Vaswani et al., 2017)
-@register_model_architecture("transformer", "transformer_vaswani_wmt_en_de_big")
+@register_model_architecture("transformer_vae", "transformer_vae_vaswani_wmt_en_de_big")
 def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 4096)
@@ -957,20 +923,20 @@ def transformer_vaswani_wmt_en_de_big(args):
     base_architecture(args)
 
 
-@register_model_architecture("transformer", "transformer_vaswani_wmt_en_fr_big")
+@register_model_architecture("transformer_vae", "transformer_vae_vaswani_wmt_en_fr_big")
 def transformer_vaswani_wmt_en_fr_big(args):
     args.dropout = getattr(args, "dropout", 0.1)
     transformer_vaswani_wmt_en_de_big(args)
 
 
-@register_model_architecture("transformer", "transformer_wmt_en_de_big")
+@register_model_architecture("transformer_vae", "transformer_vae_wmt_en_de_big")
 def transformer_wmt_en_de_big(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     transformer_vaswani_wmt_en_de_big(args)
 
 
 # default parameters used in tensor2tensor implementation
-@register_model_architecture("transformer", "transformer_wmt_en_de_big_t2t")
+@register_model_architecture("transformer_vae", "transformer_vae_wmt_en_de_big_t2t")
 def transformer_wmt_en_de_big_t2t(args):
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", True)
     args.decoder_normalize_before = getattr(args, "decoder_normalize_before", True)
