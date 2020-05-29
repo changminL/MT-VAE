@@ -34,13 +34,14 @@ class Vocab(object):
         if self.min_freq > 1:
             self.counter = {w:i for w, i in filter(
                 lambda x:x[1] >= self.min_freq, self.counter.items())}
+        self.counter = self.counter.most_common(50000)
         self.vocab_size = 0
         for w in self.specials:
             self.stoi[w] = self.vocab_size
             self.vocab_size += 1
 
-        for w in self.counter.keys():
-            self.stoi[w] = self.vocab_size
+        for w in self.counter:
+            self.stoi[w[0]] = self.vocab_size
             self.vocab_size += 1
         
         self.itos = {i:w for w, i in self.stoi.items()}
@@ -83,8 +84,8 @@ class DataSet(list):
         super(DataSet, self).__init__(*args)
 
     def read(self):
-        with open(self.data_path[0], "r") as fin_src,\
-             open(self.data_path[1], "r") as fin_trg:
+        with open(self.data_path[0], "r", encoding='latin-1') as fin_src,\
+             open(self.data_path[1], "r", encoding='latin-1') as fin_trg:
             for line1, line2 in zip(fin_src, fin_trg):
                 src, trg = line1.rstrip("\r\n"), line2.rstrip("\r\n")
                 src = src.split()
@@ -182,11 +183,11 @@ class DataBatchIterator(object):
             trg, max_trg_Ls, self.trg_vocab.stoi, add_bos=True, add_eos=True) for _, trg in pairs]
 
         batch = Batch()
-        batch.src = torch.LongTensor(src).transpose(0, 1).to('cuda')
-        batch.trg = torch.LongTensor(trg).transpose(0, 1).to('cuda')
+        batch.src = torch.LongTensor(src).transpose(0, 1).cuda(2)
+        batch.trg = torch.LongTensor(trg).transpose(0, 1).cuda(2)
         
-        batch.src_Ls = torch.LongTensor(src_Ls).to('cuda')
-        batch.trg_Ls = torch.LongTensor(trg_Ls).to('cuda')
+        batch.src_Ls = torch.LongTensor(src_Ls).cuda(2)
+        batch.trg_Ls = torch.LongTensor(trg_Ls).cuda(2)
         return batch
 
 
