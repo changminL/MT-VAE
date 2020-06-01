@@ -167,6 +167,92 @@ class TransformerVAEPosApproxLayer(nn.Module):
 
     def __init__(self, args):
         super().__init__()
+        self.embed_dim = args.pos_approx_embed_dim
+        self.quant_noise = getattr(args, "quant_noise_pq", 0)
+        self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
+        self.self_attn = self.build_self_attention(self.embed_dim, args)
+        self.self_attn_layer_norm = LayerNorm(self.embed_dim)
+        self.dropout = args.dropout
+        self.activation_fn = utils.get_activation_fn(
+            activation=getattr(args, "activation_fn", "relu")
+        )
+        self.activation_dropout = getattr(args, "activation_dropout", 0)
+        if self.activation_dropout == 0:
+            # for backwards compatibility with models that use args.relu_dropout
+            self.activation_dropout = getattr(args, "relu_dropout", 0)
+        self.normalize_before = args.pos_approx_normalize_before
+        self.fc1 = self.build_fc1(
+            self.embed_dim, args.pos_approx_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size
+        )
+        self.fc2 = self.build_fc2(
+            args.pos_approx_ffn_embed_dim, args.embed_dim, self.quant_noise, self.quant_noise_block_size
+        )
+        self.fc12 = self.build_fc12(
+            self.embed_dim, args.pos_approx_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size
+        )
+        self.fc22 = self.build_fc22(
+            args.pos_approx_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size
+        )
+        self.final_layer_norm = LayerNorm(self.embed_dim)
+
+    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_fc12(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_fc22(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_self_attention(self, embed_dim, args):
+        return MultiheadAttention(
+            embed_dim,
+            args.pos_approx_attention_heads,
+            dropout=args.attention_dropout,
+            self_attention=True,
+            q_noise=self.quant_noise,
+            qn_block_size=self.quant_noise_block_size,
+        )
+
+    def upgrade_state_dict_named(self, state_dict, name):
+        """
+        Rename layer norm states form `...layer_norms.0.weight` to
+        `...self_attn_layer_norm.weight` and `...layer_norms.1.weight` to
+        `...final_layer_norm.weight`
+        """
+        layer_norm_map = {"0": "self_attn_layer_norm", "1": "final_layer_norm"}
+        for old, new in layer_norm_map.items():
+            for m in ("weight", "bias"):
+                k = "{}.layer_norms.{}.{}".format(name, old, m)
+                if k in state_dict:
+                    state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
+                    del state_dict[k]
+
+    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
+        """
+        Args:
+            x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
+            encoder_padding_mask (ByteTensor): binary ByteTensor of shape
+                `(batch, src_len)` where padding elements are indicated by ``1``.
+            attn_mask (ByteTensor): binary tensor of shape (T_tgt, T_src), where
+            T_tgt is the length of query, while T_src is the length of key,
+            though here both query and key is x here,
+            attn_mask[t_tgt, t_src] = 1 means when calculating embedding
+            for t_tgt, t_src is excluded (or masked out), =0 means it is
+            included in attention
+
+        Returns:
+            encoded output of shape `(seq_len, batch, embed_dim)`
+        """
+        residual = x
+        if self.normalize_before:
+            x = self.self_attn_layer_norm(x)
+        if attn_mask is not None:
+            attn_mask = attn_mask.masked_fill(attn_mask.to(torch.bool), -1e8)
+
 
 
 class TransformerVAEDecoderLayer(nn.Module):
