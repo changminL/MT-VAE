@@ -158,6 +158,17 @@ class TransformerVAEEncoderLayer(nn.Module):
         return mu, R
 
 
+class TransformerVAEPosApproxLayer(nn.Module):
+    """Posterior Approximator layer block.
+
+    Args:
+        args (argparse.Namespace): parsed command-line arguments
+    """
+
+    def __init__(self, args):
+        super().__init__()
+
+
 class TransformerVAEDecoderLayer(nn.Module):
     """Decoder layer block.
 

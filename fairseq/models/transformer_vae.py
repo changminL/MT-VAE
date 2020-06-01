@@ -186,6 +186,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             )
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
+        pos_approx = cls.build_pos_approx(cls, args, src_dict, embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
@@ -203,6 +204,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_encoder(cls, args, src_dict, embed_tokens):
+        return TransformerVAEEncoder(args, src_dict, embed_tokens)
+
+    @classmethod
+    def build_pos_approx(cls, args, src_dict, embed_tokens):
         return TransformerVAEEncoder(args, src_dict, embed_tokens)
 
     @classmethod
@@ -237,6 +242,14 @@ class TransformerModel(FairseqEncoderDecoderModel):
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
         )
+
+        pos_approx_out = self.pos_approx(
+            src_tokens,
+            src_lengths=src_lengths,
+            prev_output_tokens,
+            return_all_hiddens=return_all_hiddens,
+        )
+
         decoder_out = self.decoder(
             prev_output_tokens,
             encoder_out=encoder_out,
@@ -246,7 +259,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
         )
-        return decoder_out
+        return decoder_out, encoder_out.encoder_states
 
     # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
     # I rewrite the get_normalized_probs from Base Class to call the
@@ -262,7 +275,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
 
 
-class TransformerEncoder(FairseqEncoder):
+class TransformerVAEEncoder(FairseqEncoder):
     """
     Transformer encoder consisting of *args.encoder_layers* layers. Each layer
     is a :class:`TransformerEncoderLayer`.
@@ -328,7 +341,7 @@ class TransformerEncoder(FairseqEncoder):
             self.layernorm_embedding = None
 
     def build_encoder_layer(self, args):
-        return TransformerEncoderLayer(args)
+        return TransformerVAEEncoderLayer(args)
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
@@ -480,7 +493,184 @@ class TransformerEncoder(FairseqEncoder):
         return state_dict
 
 
-class TransformerDecoder(FairseqIncrementalDecoder):
+class TransformerVAEApproximator(FairseqEncoder):
+    """
+    Transformer posterior approximator consisting of *args.encoder_layers* layers. Each layer
+    is a :class:'TransformerEncoderLayer'.
+
+    Args:
+        args (argparse.Namespace): parsed command-line arguments
+        dictionary (~fairseq.data.Dictionary): encoding dictionary
+        embed_tokens (torch.nn.Embedding): input embedding
+    """
+
+    def __init__(self, args, dictionary, embed_tokens):
+        super().__init__(dictionary)
+        self.register_buffer("version", torch.Tensor([3]))
+
+        self.dropout = args.dropout
+        self.pos_approx_layerdropout = args.encoder_layerdrop
+
+        embed_dim = embed_tokens.embedding_dim
+        self.padding_idx = embed_tokens.padding_idx
+        self.max_source_positions = args.max_source_positions
+
+        self.embed_tokens = embed_tokens
+
+        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+
+        self.embed_positions_src = (
+            PositionalEmbedding(
+                args.max_source_positions,
+                embed_dim,
+                self.padding_idx,
+                learned=args.pos_approx_learned_pos,
+            )
+            if not args.no_token_positional_embeddings
+            else None
+        )
+
+        self.embed_positions_tgt = (
+            PositionalEmbedding(
+                args.max_target_positions,
+                embed_dim,
+                self.padding_idx,
+                learned=args.pos_approx_learned_pos,
+            )
+            if not args.no_token_positional_embeddings
+            else None
+        )
+
+        if not args.adaptive_input and args.quant_noise_pq > 0:
+            self.quant_noise = apply_quant_noise_(
+                nn.Linear(embed_dim, embed_dim, bias=False),
+                args.quant_noise_pq,
+                args.quant_noise_pq_block_size,
+            )
+        else:
+            self.quant_noise = None
+
+        if self.pos_approx_layerdrop > 0.0:
+            self.layers = LayerDropModuleList(p=self.pos_approx_layerdrop)
+        else:
+            self.layers = nn.ModuleList([])
+        self.layers.extend([
+            self.build_pos_approx_layer(args)
+            for i in range(args.pos_approx_layers)
+        ])
+        self.num_layers = len(self.layers)
+
+        if args.pos_approx_normalize_before:
+            self.layer_norm = LayerNorm(embed_dim)
+        else:
+            self.layer_norm = None
+        if getattr(args, "layernom_embedding", False):
+            self.layernorm_embedding = LayerNorm(embed_dim)
+        else:
+            self.layernorm_embedding = None
+
+    def build_pos_approx_layer(self, args):
+        return TransformerVAEPosApproxLayer(args)
+
+    def forward_embedding(self, src_tokens, tgt_tokens):
+        x = embed_x = self.embed_scale * self.embed_tokens(src_tokens)
+        y = embed_y = self.embed_scale * self.embed_tokens(tgt_tokens)
+        if self.embed_positions is not None:
+            x = embed_x + self.embed_positions_src(src_tokens)
+            y = embed_y + self.embed_positions_tgt(tgt_tokens)
+        x = torch.cat((x, y), dim=1)
+        embed = torch.cat((embed_x, embed_y), dim=1)
+        if self.layernorm_embedding is not None:
+            x = self.layernorm_embedding(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        if self.quant_noise is not None:
+            x = self.quant_noise(x)
+        return x, embed
+
+    def forward(
+        self,
+        src_tokens,
+        src_lengths,
+        tgt_tokens,
+        return_all_hiddens: bool = False,
+    ):
+        """
+        Args:
+            src_tokens (LongTensor): tokens in the source language of shape
+                `(batch, src_len)`
+            src_lengths (torch.LongTensor): lenghts of each source sentence of
+                shape `(batch)`
+            tgt_tokens (LongTensor): tokens in the target language of shape
+                `(batch, tgt_len)`
+            return_all_hiddens (bool, optional): also return all of the
+                intermediate hidden states (default: False).
+
+        Returns:
+        """
+        x, encoder_embedding = self.forward_embedding(src_tokens, tgt_tokens)
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+
+        # compute padding mask
+        pos_approx_padding_mask = torch.cat((src_tokens.eq(self.padding_idx),
+                                             tgt_tokens.eq(self.padding_idx)), dim=1)
+
+        pos_approx_states = [] if return_all_hiddens else None
+
+        # posterior approximator layers
+        for layer in self.layers:
+            x = layer(x, pos_approx_padding_mask)
+            if return_all_hiddens:
+                assert pos_approx_states is not None
+                pos_approx_states.append(x)
+
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+
+        return EncoderOut(
+            encoder_out=x,
+            encoder_padding_mask=pos_approx_padding_mask,
+            encoder_embedding=encoder_embedding,
+            encoder_states=pos_approx_states,
+            src_tokens=None,
+            src_lengths=None,
+        )
+
+    def max_positions(self):
+        """Maximum input length supported by the posterior approximator."""
+        if self.embed_positions_src is None and self.embed_positions_tgt is None:
+            return self.max_source_positions
+        return min(self.max_source_positions,
+                   self.embed_positions_src.max_positions +
+                   self.embed_positions_tgt.max_positions)
+
+    def upgrade_state_dict_named(self, state_dict, name):
+        """Upgrade a (possibly old) state dict for new versions of fairseq."""
+        if isinstance(self.embed_positions, SinusoidalPositionalEmbedding):
+            weights_key = "{}.embed_positions.weights".format(name)
+            if weights_key in state_dict:
+                print("deleting {0}".format(weights_key))
+                del state_dict[weights_key]
+            state_dict[
+                "{}.embed_positions._float_tensor".format(name)
+            ] = torch.FloatTensor(1)
+        for i in range(self.num_layers):
+            # update layer norms
+            self.layers[i].upgrade_state_dict_named(
+                state_dict, "{}.layers.{}".format(name, i)
+            )
+
+        version_key = "{}.version".format(name)
+        if utils.item(state_dict.get(version_key, torch.Tensor([1]))[0]) < 2:
+            # earlier checkpoints did not normalize after the stack of layers
+            self.layer_norm = None
+            self.normalize = False
+            state_dict[version_key] = torch.Tensor([1])
+        return state_dict
+
+
+class TransformerVAEDecoder(FairseqIncrementalDecoder):
     """
     Transformer decoder consisting of *args.decoder_layers* layers. Each layer
     is a :class:`TransformerDecoderLayer`.
@@ -597,7 +787,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             )
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
-        return TransformerDecoderLayer(args, no_encoder_attn)
+        return TransformerVAEDecoderLayer(args, no_encoder_attn)
 
     def forward(
         self,
@@ -855,6 +1045,13 @@ def base_architecture(args):
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
+    args.pos_approx_embed_path = getattr(args, "encoder_embed_path", None)
+    args.pos_approx_embed_dim = getattr(args, "encoder_embed_dim", 512)
+    args.pos_approx_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
+    args.pos_approx_layers = getattr(args, "encoder_layers", 6)
+    args.pos_approx_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.pos_approx_normalize_before = getattr(args, "encoder_normalize_before", False)
+    args.pos_approx_learned_pos = getattr(args, "encoder_learned_pos", False)
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
     args.decoder_ffn_embed_dim = getattr(
