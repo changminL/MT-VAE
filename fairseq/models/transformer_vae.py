@@ -325,7 +325,8 @@ class TransformerVAEEncoder(FairseqEncoder):
         self.embed_tokens = embed_tokens
 
         self.chol_factor = chol_factor_cls(args.encoder_embed_dim)
-
+        args.chol_factor_parameter_size = getattr(args, "chol_factor_parameter_size",
+                                                  self.chol_factor.free_parameter_size())
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.embed_positions = (
@@ -422,6 +423,8 @@ class TransformerVAEEncoder(FairseqEncoder):
         # encoder layers
         for layer in self.layers:
             x, logvar_free = layer(x, encoder_padding_mask)
+            import pdb
+            pdb.set_trace()
             R = self.chol_factor.parameterize(logvar_free)
             if return_all_hiddens:
                 assert encoder_states is not None
@@ -558,6 +561,8 @@ class TransformerVAEApproximator(FairseqEncoder):
         self.embed_tokens = embed_tokens
 
         self.chol_factor = chol_factor_cls(args.pos_approx_embed_dim)
+        args.chol_factor_parameter_size = getattr(args, "chol_factor_parameter_size",
+                                                  self.chol_factor.free_parameter_size())
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 

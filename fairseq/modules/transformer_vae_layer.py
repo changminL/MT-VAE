@@ -55,7 +55,7 @@ class TransformerVAEEncoderLayer(nn.Module):
             self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size
         )
         self.fc22 = self.build_fc22(
-            args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size
+            args.encoder_ffn_embed_dim, args.chol_factor_parameter_size, self.quant_noise, self.quant_noise_block_size
         )
         self.final_layer_norm = LayerNorm(self.embed_dim)
 
@@ -137,15 +137,15 @@ class TransformerVAEEncoderLayer(nn.Module):
             x = self.self_attn_layer_norm(x)
 
         residual_mu = x
-        residual_R = x
+        residual_logvar = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
 
-        R = self.activation_fn(self.fc12(x))
-        R = F.dropout(R, p=float(self.activation_dropout), training=self.training)
-        R = self.fc22(R)
-        R = F.dropout(R, p=self.dropout, training=self.training)
-        #R = residual_R + R
+        logvar = self.activation_fn(self.fc12(x))
+        logvar = F.dropout(logvar, p=float(self.activation_dropout), training=self.training)
+        logvar = self.fc22(logvar)
+        logvar = F.dropout(logvar, p=self.dropout, training=self.training)
+        logvar = residual_logvar + logvar
 
         mu = self.activation_fn(self.fc1(x))
         mu = F.dropout(mu, p=float(self.activation_dropout), training=self.training)
@@ -154,8 +154,8 @@ class TransformerVAEEncoderLayer(nn.Module):
         mu = residual_mu + mu
         if not self.normalize_before:
             mu = self.final_layer_norm(mu)
-            #R = self.final_layer_norm(R)
-        return mu, R
+            logvar = self.final_layer_norm(logvar)
+        return mu, logvar
 
 
 class TransformerVAEPosApproxLayer(nn.Module):
@@ -191,7 +191,7 @@ class TransformerVAEPosApproxLayer(nn.Module):
             self.embed_dim, args.pos_approx_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size
         )
         self.fc22 = self.build_fc22(
-            args.pos_approx_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size
+            args.pos_approx_ffn_embed_dim, args.chol_factor_parameter_size, self.quant_noise, self.quant_noise_block_size
         )
         self.final_layer_norm = LayerNorm(self.embed_dim)
 
@@ -273,15 +273,15 @@ class TransformerVAEPosApproxLayer(nn.Module):
             x = self.self_attn_layer_norm(x)
 
         residual_mu = x
-        residual_R = x
+        residual_logvar = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
 
-        R = self.activation_fn(self.fc12(x))
-        R = F.dropout(R, p=float(self.activation_dropout), training=self.training)
-        R = self.fc22(R)
-        R = F.dropout(R, p=self.dropout, training=self.training)
-        # R = residual_R + R
+        logvar = self.activation_fn(self.fc12(x))
+        logvar = F.dropout(logvar, p=float(self.activation_dropout), training=self.training)
+        logvar = self.fc22(logvar)
+        logvar = F.dropout(logvar, p=self.dropout, training=self.training)
+        logvar = residual_logvar + logvar
 
         mu = self.activation_fn(self.fc1(x))
         mu = F.dropout(mu, p=float(self.activation_dropout), training=self.training)
@@ -290,8 +290,8 @@ class TransformerVAEPosApproxLayer(nn.Module):
         mu = residual + mu
         if not self.normalize_before:
             mu = self.final_layer_norm(mu)
-            #R = self.final_layer_norm(R)
-        return mu, R
+            logvar = self.final_layer_norm(logvar)
+        return mu, logvar
 
 
 class TransformerVAEDecoderLayer(nn.Module):

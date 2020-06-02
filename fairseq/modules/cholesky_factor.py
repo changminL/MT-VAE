@@ -18,12 +18,13 @@ class CholeskyFactor:
         return self._free_parameter_size
 
     def parameterize(self, free_parameter):
-        # batch_size x free_parameter_size -> batch_size x size x size
+        # sent_len x batch_size x free_parameter_size -> sent_len x batch_size x size x size
 
-        batch_size = free_parameter.shape[0]
+        sent_len = free_parameter.shape[0]
+        batch_size = free_parameter.shape[1]
 
-        assert free_parameter.shape[1] == self.free_parameter_size()
-        R = torch.zeros(batch_size, self.size, self.size)
+        assert free_parameter.shape[2] == self.free_parameter_size()
+        R = torch.zeros(sent_len, batch_size, self.size, self.size)
         R[:, :, self.diag_ii, self.diag_jj] = free_parameter[:, :, :self.size].exp() + self.delta
         R[:, :, self.low_ii, self.low_jj] = free_parameter[:, :, self.size:]
 
@@ -44,11 +45,14 @@ class DiagonalFactor:
         return self._free_parameter_size
 
     def parameterize(self, free_parameter):
-        # batch_size x free_parameter_size -> batch_size x size x size
-        batch_size = free_parameter.shape[0]
+        # sent_len x batch_size x free_parameter_size -> sent_len x batch_size x size x size
 
-        assert free_parameter.shape[1] == self.free_parameter_size()
-        R = torch.zeros(batch_size, self.size, self.size)
-        R[:, self.diag_ii, self.diag_jj] = free_parameter[:, :self.size].exp() + self.delta
+        sent_len = free_parameter.shape[0]
+        batch_size = free_parameter.shape[1]
+
+        assert free_parameter.shape[2] == self.free_parameter_size()
+        R = torch.zeros(sent_len, batch_size, self.size, self.size,
+                        dtype=torch.half, device=free_parameter.device)
+        R[:, :, self.diag_ii, self.diag_jj] = free_parameter[:, :, :self.size].exp() + self.delta
 
         return R
