@@ -185,7 +185,7 @@ class TransformerVAEPosApproxLayer(nn.Module):
             self.embed_dim, args.pos_approx_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size
         )
         self.fc2 = self.build_fc2(
-            args.pos_approx_ffn_embed_dim, args.embed_dim, self.quant_noise, self.quant_noise_block_size
+            args.pos_approx_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size
         )
         self.fc12 = self.build_fc12(
             self.embed_dim, args.pos_approx_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size

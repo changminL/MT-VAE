@@ -30,7 +30,7 @@ from .transformer_sentence_encoder_layer import TransformerSentenceEncoderLayer
 from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
-from .transformer_vae_layer import TransformerVAEDecoderLayer, TransformerVAEEncoderLayer
+from .transformer_vae_layer import TransformerVAEDecoderLayer, TransformerVAEEncoderLayer, TransformerVAEPosApproxLayer
 from .vggblock import VGGBlock
 from .cholesky_factor import CholeskyFactor, DiagonalFactor
 
@@ -68,6 +68,7 @@ __all__ = [
     'TransformerEncoderLayer',
     'TransformerVAEDecoderLayer',
     'TransformerVAEEncoderLayer',
+    'TransformerVAEPosApproxLayer',
     'VGGBlock',
     'unfold1d',
     'CholeskyFactor',

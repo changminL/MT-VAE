@@ -316,6 +316,58 @@ class FairseqEncoderDecoderModel(BaseFairseqModel):
         return self.decoder.max_positions()
 
 
+class FairseqCVAEModel(BaseFairseqModel):
+    """Base class for conditional variational autoencoder models.
+
+    Args:
+        encoder (FairseqEncoder): the encoder (prior)
+        pos_approx (FairseqEncoder): the posterior approximator
+        decoder (FairseqDecoder): the decoder
+    """
+
+    def __init__(self, encoder, pos_approx, decoder):
+        super().__init__()
+
+        self.encoder = encoder
+        self.pos_approx = pos_approx
+        self.decoder = decoder
+        assert isinstance(self.encoder, FairseqEncoder)
+        assert isinstance(self.pos_approx, FairseqEncoder)
+        assert isinstance(self.decoder, FairseqDecoder)
+
+    def forward(self, src_tokens, src_lengths, prev_output_tokens, **kwargs):
+        encoder_out = self.encoder(src_tokens, src_lengths=src_lengths, **kwargs)
+        pos_approx_out = self.pos_approx(
+                             src_tokens,
+                             src_lengths=src_lengths,
+                             tgt_tokens=prev_output_tokens,
+                             **kwargs
+                         )
+        decoder_out = self.decoder(
+            prev_output_tokens, encoder_out=encoder_out, **kwargs
+        )
+        return decoder_out, encoder_out.encoder_states, pos_approx_out.encoder_states
+
+    def forward_decoder(self, prev_output_tokens, **kwargs):
+        return self.decoder(prev_output_tokens, **kwargs)
+
+    def extract_features(self, src_tokens, src_lengths, prev_output_tokens, **kwargs):
+        encoder_out = self.encoder(src_tokens, src_lengths=src_lengths, **kwargs)
+        features = self.decoder.extract_features(
+            prev_output_tokens, encoder_out=encoder_out, **kwargs
+        )
+        return features
+
+    def output_layer(self, features, **kwargs):
+        return self.decoder.output_layer(features, **kwargs)
+
+    def max_positions(self):
+        return (self.encoder.max_positions(), self.decoder.max_positions())
+
+    def max_decoder_positions(self):
+        return self.decoder.max_positions()
+
+
 class FairseqModel(FairseqEncoderDecoderModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

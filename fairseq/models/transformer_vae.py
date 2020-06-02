@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from fairseq import options, utils
 from fairseq.models import (
     FairseqEncoder,
+    FairseqCVAEModel,
     FairseqEncoderDecoderModel,
     FairseqIncrementalDecoder,
     register_model,
@@ -26,6 +27,7 @@ from fairseq.modules import (
     SinusoidalPositionalEmbedding,
     TransformerVAEDecoderLayer,
     TransformerVAEEncoderLayer,
+    TransformerVAEPosApproxLayer,
 )
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
@@ -36,7 +38,7 @@ DEFAULT_MAX_TARGET_POSITIONS = 1024
 
 
 @register_model("transformer_vae")
-class TransformerModel(FairseqEncoderDecoderModel):
+class TransformerCVAEModel(FairseqCVAEModel):
     """
     Transformer model from `"Attention Is All You Need" (Vaswani, et al, 2017)
     <https://arxiv.org/abs/1706.03762>`_.
@@ -52,8 +54,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
         :ref: fairseq.models.transformer_parser
         :prog:
     """
-    def __init__(self, args, encoder, decoder):
-        super().__init__(encoder, decoder)
+    def __init__(self, args, encoder, pos_approx, decoder):
+        super().__init__(encoder, pos_approx, decoder)
         self.args = args
         self.supports_align_args = True
 
@@ -186,9 +188,9 @@ class TransformerModel(FairseqEncoderDecoderModel):
             )
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        pos_approx = cls.build_pos_approx(cls, args, src_dict, embed_tokens)
+        pos_approx = cls.build_pos_approx(args, src_dict, encoder_embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
-        return cls(args, encoder, decoder)
+        return cls(args, encoder, pos_approx, decoder)
 
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
@@ -208,7 +210,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_pos_approx(cls, args, src_dict, embed_tokens):
-        return TransformerVAEEncoder(args, src_dict, embed_tokens)
+        return TransformerVAEApproximator(args, src_dict, embed_tokens)
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
@@ -246,7 +248,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         pos_approx_out = self.pos_approx(
             src_tokens,
             src_lengths=src_lengths,
-            prev_output_tokens,
+            tgt_tokens=prev_output_tokens,
             return_all_hiddens=return_all_hiddens,
         )
 
@@ -519,7 +521,7 @@ class TransformerVAEApproximator(FairseqEncoder):
         self.register_buffer("version", torch.Tensor([3]))
 
         self.dropout = args.dropout
-        self.pos_approx_layerdropout = args.encoder_layerdrop
+        self.pos_approx_layerdrop = args.encoder_layerdrop
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
@@ -585,7 +587,7 @@ class TransformerVAEApproximator(FairseqEncoder):
     def forward_embedding(self, src_tokens, tgt_tokens):
         x = embed_x = self.embed_scale * self.embed_tokens(src_tokens)
         y = embed_y = self.embed_scale * self.embed_tokens(tgt_tokens)
-        if self.embed_positions is not None:
+        if (self.embed_positions_src is not None) and (self.embed_positions_tgt is not None):
             x = embed_x + self.embed_positions_src(src_tokens)
             y = embed_y + self.embed_positions_tgt(tgt_tokens)
         x = torch.cat((x, y), dim=1)
@@ -1104,6 +1106,10 @@ def transformer_iwslt_de_en(args):
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 1024)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 4)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
+    args.pos_approx_embed_dim = getattr(args, "pos_approx_embed_dim", 512)
+    args.pos_approx_ffn_embed_dim = getattr(args, "pos_approx_ffn_embed_dim", 1024)
+    args.pos_approx_attention_heads = getattr(args, "pos_approx_attention_heads", 4)
+    args.pos_approx_layers = getattr(args, "pos_approx_layers", 6)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 1024)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 4)
@@ -1123,6 +1129,10 @@ def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 4096)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 16)
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
+    args.pos_approx_embed_dim = getattr(args, "pos_approx_embed_dim", 1024)
+    args.pos_approx_ffn_embed_dim = getattr(args, "pos_approx_ffn_embed_dim", 4096)
+    args.pos_approx_attention_heads = getattr(args, "pos_approx_attention_heads", 16)
+    args.pos_approx_normalize_before = getattr(args, "pos_approx_normalize_before", False)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 4096)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 16)
