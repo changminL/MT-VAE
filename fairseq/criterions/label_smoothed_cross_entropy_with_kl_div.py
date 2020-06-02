@@ -12,18 +12,18 @@ from .label_smoothed_cross_entropy import LabelSmoothedCrossEntropyCriterion
 
 
 @register_criterion('label_smoothed_cross_entropy_with_kl_div')
-class LabelSmoothedCrossEntropyCriterionWithAlignment(LabelSmoothedCrossEntropyCriterion):
+class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntropyCriterion):
 
-    def __init__(self, task, sentence_avg, label_smoothing, alignment_lambda):
+    def __init__(self, task, sentence_avg, label_smoothing, KL_lambda):
         super().__init__(task, sentence_avg, label_smoothing)
-        self.alignment_lambda = alignment_lambda
+        self.KL_lambda = KL_lambda
 
     @staticmethod
     def add_args(parser):
         """Add criterion-specific arguments to the parser."""
         LabelSmoothedCrossEntropyCriterion.add_args(parser)
-        parser.add_argument('--alignment-lambda', default=0.05, type=float, metavar='D',
-                            help='weight for the alignment loss')
+        parser.add_argument('--KL-lambda', default=1.0, type=float, metavar='D',
+                            help='weight for the KL-divergence loss')
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -34,7 +34,7 @@ class LabelSmoothedCrossEntropyCriterionWithAlignment(LabelSmoothedCrossEntropyC
         3) logging outputs to display while training
         """
         net_output = model(**sample['net_input'])
-        loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
+        loss, nll_loss = self.compute_loss(model, net_output[0], sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
@@ -44,32 +44,25 @@ class LabelSmoothedCrossEntropyCriterionWithAlignment(LabelSmoothedCrossEntropyC
             'sample_size': sample_size,
         }
 
-        alignment_loss = None
-
-        # Compute alignment loss only for training set and non dummy batches.
-        if 'alignments' in sample and sample['alignments'] is not None:
-            alignment_loss = self.compute_alignment_loss(sample, net_output)
-
-        if alignment_loss is not None:
-            logging_output['alignment_loss'] = utils.item(alignment_loss.data)
-            loss += self.alignment_lambda * alignment_loss
+        KL_div = self.compute_KL_divergence(net_output[1], net_output[2])
+        if KL_div is not None:
+            logging_output["kl_div"] = utils.item(KL_div.data)
+            loss += self.KL_lambda * KL_div
 
         return loss, sample_size, logging_output
 
-    def compute_alignment_loss(self, sample, net_output):
-        attn_prob = net_output[1]['attn'][0]
-        bsz, tgt_sz, src_sz = attn_prob.shape
-        attn = attn_prob.view(bsz * tgt_sz, src_sz)
+    def compute_KL_divergence(self, piror_out, pos_approx_out):
+        KLD_list = []
 
-        align = sample['alignments']
-        align_weights = sample['align_weights'].float()
+        for prior, pos_approx in zip(prior_out, pos_approx_out):
+            mu_a, R_a = prior
+            mu_b, R_b = pos_approx
+            C_a = R_a @ R_a.transpose(-1, -2) # batch_size x sequence_len x size x size
+            C_b = R_b @ R_b.transpose(-1, -2) # batch_size x sequence_len x size x size
+            KLD = 0.5
+            KLD_list.append(KLD)
 
-        if len(align) > 0:
-            # Alignment loss computation. align (shape [:, 2]) contains the src-tgt index pairs corresponding to
-            # the alignments. align_weights (shape [:]) contains the 1 / frequency of a tgt index for normalizing.
-            loss = -((attn[align[:, 1][:, None], align[:, 0][:, None]]).log() * align_weights[:, None]).sum()
-        else:
-            return None
+
 
         return loss
 
@@ -78,13 +71,13 @@ class LabelSmoothedCrossEntropyCriterionWithAlignment(LabelSmoothedCrossEntropyC
         """Aggregate logging outputs from data parallel training."""
         loss_sum = utils.item(sum(log.get('loss', 0) for log in logging_outputs))
         nll_loss_sum = utils.item(sum(log.get('nll_loss', 0) for log in logging_outputs))
-        alignment_loss_sum = utils.item(sum(log.get('alignment_loss', 0) for log in logging_outputs))
+        kl_div_loss_sum = utils.item(sum(log.get('kl_div', 0) for log in logging_outputs))
         ntokens = utils.item(sum(log.get('ntokens', 0) for log in logging_outputs))
         sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
 
         metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('nll_loss', nll_loss_sum / ntokens / math.log(2), ntokens, round=3)
-        metrics.log_scalar('alignment_loss', alignment_loss_sum / sample_size / math.log(2), sample_size, round=3)
+        metrics.log_scalar('kl_div_loss', kl_div_loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_derived('ppl', lambda meters: utils.get_perplexity(meters['nll_loss'].avg))
 
     @staticmethod

@@ -32,6 +32,7 @@ from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .transformer_vae_layer import TransformerVAEDecoderLayer, TransformerVAEEncoderLayer
 from .vggblock import VGGBlock
+from .cholesky_factor import CholeskyFactor, DiagonalFactor
 
 __all__ = [
     'AdaptiveInput',
@@ -69,4 +70,6 @@ __all__ = [
     'TransformerVAEEncoderLayer',
     'VGGBlock',
     'unfold1d',
+    'CholeskyFactor',
+    'DiagonalFactor',
 ]

@@ -252,14 +252,14 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
         decoder_out = self.decoder(
             prev_output_tokens,
-            encoder_out=encoder_out,
+            encoder_out=pos_approx_out,
             features_only=features_only,
             alignment_layer=alignment_layer,
             alignment_heads=alignment_heads,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
         )
-        return decoder_out, encoder_out.encoder_states
+        return decoder_out, encoder_out.encoder_states, pos_approx_out.encoder_states
 
     # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
     # I rewrite the get_normalized_probs from Base Class to call the
@@ -410,6 +410,16 @@ class TransformerVAEEncoder(FairseqEncoder):
             src_tokens=None,
             src_lengths=None,
         )
+
+        def sample(self, encoder_out: EncoderOut):
+            z_list = []
+            for mu, R in encoder_out.encoder_states:
+                eps = torch.randn_like(mu)
+                z = mu + torch.einsum('ijk,ik->ij', R, eps)
+
+        def log_prob(self, z, mu, R):
+            dist = torch.distributions.MultivariateNormal(mu, scale_tril=R)
+            return dist.log_prob(z)
 
     @torch.jit.export
     def reorder_encoder_out(self, encoder_out: EncoderOut, new_order):
