@@ -24,6 +24,8 @@ from Utils.plot import plot_attn
 from Utils.utils import report_bleu
 from Utils.utils import report_rouge
 
+from tqdm import tqdm
+
 def report_score(name, score_total, words_total):
     print("%s AVG SCORE: %.4f, %s PPL: %.4f" % (
         name, score_total / words_total,
@@ -73,7 +75,7 @@ def main():
 
     pred_list = []
     gold_list = []
-    for batch in data_iter:
+    for batch in tqdm(data_iter):
         outputs = translator.translate_batch(batch)
         batch_trans = builder.from_batch_translator_output(outputs)
         
