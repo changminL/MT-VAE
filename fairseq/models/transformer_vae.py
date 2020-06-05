@@ -249,6 +249,7 @@ class TransformerCVAEModel(FairseqCVAEModel):
         """
         encoder_out = None
         pos_approx_out = None
+
         if self.training:
             encoder_out = self.encoder(
                 src_tokens,
@@ -262,15 +263,19 @@ class TransformerCVAEModel(FairseqCVAEModel):
                 tgt_tokens=prev_output_tokens,
                 return_all_hiddens=return_all_hiddens,
             )
-
-            z_prior = self.encoder.sample(encoder_out)
-            z_pos_approx = self.pos_approx_out.sample(pos_approx_out)
+            pos_approx_out = self.pos_approx.sample(pos_approx_out)
+            if return_all_hiddens:
+                prior = encoder_out.encoder_states
+                pos_approx = pos_approx_out.encoder_states
         else:
             encoder_out = self.encoder(
                 src_tokens,
                 src_lengths=src_lengths,
                 return_all_hiddens=return_all_hiddens,
             )
+            encoder_out = self.encoder.sample(encoder_out)
+            pos_approx_out = encoder_out
+
 
         decoder_out = self.decoder(
             prev_output_tokens,
@@ -282,7 +287,7 @@ class TransformerCVAEModel(FairseqCVAEModel):
             return_all_hiddens=return_all_hiddens,
         )
         if self.training:
-            return decoder_out, z_prior, z_pos_approx
+            return decoder_out, pos_approx_out, encoder_out
         else:
             return decoder_out
 
@@ -422,13 +427,11 @@ class TransformerVAEEncoder(FairseqEncoder):
 
         # encoder layers
         for layer in self.layers:
-            x, logvar_free = layer(x, encoder_padding_mask)
-            import pdb
-            pdb.set_trace()
-            R = self.chol_factor.parameterize(logvar_free)
+            x, logvar = layer(x, encoder_padding_mask)
+            #R = self.chol_factor.parameterize(logvar_free)
             if return_all_hiddens:
                 assert encoder_states is not None
-                encoder_states.append([x, R])
+                encoder_states.append([x, logvar])
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -438,17 +441,27 @@ class TransformerVAEEncoder(FairseqEncoder):
             encoder_padding_mask=encoder_padding_mask,  # B x T
             encoder_embedding=encoder_embedding,  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
+            latent_states=None,
             src_tokens=None,
             src_lengths=None,
         )
 
     def sample(self, encoder_out: EncoderOut):
         z_list = []
-        for mu, R in encoder_out.encoder_states:
-            eps = torch.randn_like(mu)
-            z = mu + torch.einsum('ijk,ik->ij', R, eps)
-            z_list.append(z)
-        return z_list
+        for mu, logvar in encoder_out.encoder_states:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.randn_like(std)
+            z_list.append(mu + eps*std)
+
+        return EncoderOut(
+            encoder_out=encoder_out.encoder_out,
+            encoder_padding_mask=encoder_out.encoder_padding_mask,
+            encoder_embedding=encoder_out.encoder_embedding,
+            encoder_states=encoder_out.encoder_states,
+            latent_states=z_list,
+            src_tokens=None,
+            src_lengths=None,
+        )
 
     def log_prob(self, z, mu, R):
         dist = torch.distributions.MultivariateNormal(mu, scale_tril=R)
@@ -671,13 +684,11 @@ class TransformerVAEApproximator(FairseqEncoder):
 
         # posterior approximator layers
         for layer in self.layers:
-            x, logvar_free = layer(x, pos_approx_padding_mask)
-            import pdb
-            pdb.set_trace()
-            R = self.chol_factor.parameterize(logvar_free)
+            x, logvar = layer(x, pos_approx_padding_mask)
+            #R = self.chol_factor.parameterize(logvar_free)
             if return_all_hiddens:
                 assert pos_approx_states is not None
-                pos_approx_states.append([x, R])
+                pos_approx_states.append([x, logvar])
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
@@ -687,19 +698,27 @@ class TransformerVAEApproximator(FairseqEncoder):
             encoder_padding_mask=pos_approx_padding_mask,
             encoder_embedding=encoder_embedding,
             encoder_states=pos_approx_states,
+            latent_states=None,
             src_tokens=None,
             src_lengths=None,
         )
 
     def sample(self, encoder_out: EncoderOut):
         z_list = []
-        for mu, R in encoder_out.encoder_states:
-            eps = torch.randn_like(mu)
-            import pdb
-            pdb.set_trace()
-            z = mu + torch.einsum('ijk,ik->ij', R, eps)
-            z_list.append(z)
-        return z_list
+        for mu, logvar in encoder_out.encoder_states:
+            std = torch.exp(0.5*logvar)
+            eps = torch.randn_like(std)
+            z_list.append(mu + eps*std)
+
+        return EncoderOut(
+            encoder_out=encoder_out.encoder_out,
+            encoder_padding_mask=encoder_out.encoder_padding_mask,
+            encoder_embedding=encoder_out.encoder_embedding,
+            encoder_states=encoder_out.encoder_states,
+            latent_states=z_list,
+            src_tokens=None,
+            src_lengths=None,
+        )
 
     def log_prob(self, z, mu, R):
         dist = torch.distributions.MultivariateNormal(mu, scale_tril=R)
@@ -975,7 +994,7 @@ class TransformerVAEDecoder(FairseqIncrementalDecoder):
 
             x, layer_attn, _ = layer(
                 x,
-                encoder_out.encoder_out if encoder_out is not None else None,
+                encoder_out.latent_states[idx] if encoder_out.latent_states is not None else None,
                 encoder_out.encoder_padding_mask if encoder_out is not None else None,
                 incremental_state,
                 self_attn_mask=self_attn_mask,

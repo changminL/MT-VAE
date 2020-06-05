@@ -51,8 +51,8 @@ class DiagonalFactor:
         batch_size = free_parameter.shape[1]
 
         assert free_parameter.shape[2] == self.free_parameter_size()
-        R = torch.zeros(sent_len, batch_size, self.size, self.size,
-                        dtype=torch.half, device=free_parameter.device)
-        R[:, :, self.diag_ii, self.diag_jj] = free_parameter[:, :, :self.size].exp() + self.delta
-
+        #R = torch.zeros(sent_len, batch_size, self.size, self.size,
+        #                dtype=torch.half, device=free_parameter.device)
+        #R[:, :, self.diag_ii, self.diag_jj] = free_parameter[:, :, :self.size].exp() + self.delta
+        R = free_parameter.mul(0.5).exp_()
         return R

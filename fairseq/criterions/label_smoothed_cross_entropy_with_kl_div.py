@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-
+import torch
 from fairseq import metrics, utils
 from fairseq.criterions import register_criterion
 
@@ -44,27 +44,28 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
             'sample_size': sample_size,
         }
 
-        KL_div = self.compute_KL_divergence(net_output[1], net_output[2])
+        KL_div = self.compute_kl_divergence(net_output[1], net_output[2])
+        #KL_div = torch.clamp(KL_div, max=30.0)
         if KL_div is not None:
             logging_output["kl_div"] = utils.item(KL_div.data)
             loss += self.KL_lambda * KL_div
 
         return loss, sample_size, logging_output
 
-    def compute_KL_divergence(self, piror_out, pos_approx_out):
-        KLD_list = []
+    def compute_kl_divergence(self, pos_approx_out, prior_out):
+        kl_div_list = []
 
-        for prior, pos_approx in zip(prior_out, pos_approx_out):
-            mu_a, R_a = prior
-            mu_b, R_b = pos_approx
-            C_a = R_a @ R_a.transpose(-1, -2) # batch_size x sequence_len x size x size
-            C_b = R_b @ R_b.transpose(-1, -2) # batch_size x sequence_len x size x size
-            KLD = 0.5
-            KLD_list.append(KLD)
+        for pos_approx, prior in zip(pos_approx_out.encoder_states, prior_out.encoder_states):
+            pos_mu, pos_logvar = pos_approx
+            pri_mu, pri_logvar = prior
+            pos_mu, pos_logvar = torch.sum(pos_mu, dim=0), torch.sum(pos_logvar, dim=0)
+            pri_mu, pri_logvar = torch.sum(pri_mu, dim=0), torch.sum(pri_logvar, dim=0)
+            kl_div = - 0.5 * torch.sum(1 + (pos_logvar - pri_logvar)
+                                       - torch.div((pri_mu - pos_mu).pow(2), (pri_logvar.exp()))
+                                       - torch.div(pos_logvar.exp(), (pri_logvar.exp())))
+            kl_div_list.append(kl_div)
 
-
-
-        return loss
+        return sum(kl_div_list)
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
