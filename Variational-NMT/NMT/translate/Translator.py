@@ -64,7 +64,7 @@ class BatchTranslator(object):
             trg = Variable(torch.stack(
                         [cad.get_current_state() for cad in beam]
                     ).t().contiguous().view(1, -1))
-            trg = trg.unsqueeze(2)
+            # trg = trg.unsqueeze(2)
             # Run one step.
             
             decoder_input = self.model.trg_embedding(trg)
@@ -103,6 +103,7 @@ class BatchTranslator(object):
         if isinstance(self.model, VNMTModel):
             # re-parameterize
             z, mu, logvar = self.model.reparameterize(encoder_state)
+
         # encoder to decoder
         decoder_state = self.model.encoder2decoder(encoder_state)
         
@@ -171,7 +172,7 @@ class BatchTranslator(object):
         
         #  (2) if a target is specified, compute the 'goldScore'
         #  (i.e. log likelihood) of the target under the model
-        gold_scores = torch.FloatTensor(batch.batch_size).fill_(0).cuda(2)
+        gold_scores = torch.FloatTensor(batch.batch_size).fill_(0).cuda()
         decoder_input = self.model.trg_embedding(trg_in)
         if isinstance(self.model, VNMTModel):
             decoder_input = torch.cat(
@@ -190,7 +191,7 @@ class BatchTranslator(object):
             scores = torch.zeros((out.data.shape[0], 1))
             for o in range(out.data.shape[0]):
                 scores[o] = out.data[o][trg[o]]
-            scores = scores.squeeze(1).cuda(2)
+            scores = scores.squeeze(1).cuda()
             #scores = torch.index_select(out.data, 1, trg)
             scores.masked_fill_(trg.eq(trg_pad), 0)
             gold_scores += scores.squeeze().float()

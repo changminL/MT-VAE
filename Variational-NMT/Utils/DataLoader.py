@@ -83,8 +83,8 @@ class DataSet(list):
         super(DataSet, self).__init__(*args)
 
     def read(self):
-        with open(self.data_path[0], "r") as fin_src,\
-             open(self.data_path[1], "r") as fin_trg:
+        with open(self.data_path[0], "r", encoding="ISO-8859-1") as fin_src,\
+             open(self.data_path[1], "r", encoding="ISO-8859-1") as fin_trg:
             for line1, line2 in zip(fin_src, fin_trg):
                 src, trg = line1.rstrip("\r\n"), line2.rstrip("\r\n")
                 src = src.split()

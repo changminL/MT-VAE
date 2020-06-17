@@ -15,7 +15,7 @@ class Beam(object):
         self.size = size
 
         # The score for each translation on the beam.
-        self.scores = torch.FloatTensor(size).zero_().cuda(2)
+        self.scores = torch.FloatTensor(size).zero_().cuda()
         self.all_scores = []
 
         # The backpointers at each time-step.
@@ -23,7 +23,7 @@ class Beam(object):
 
         # The outputs at each time-step.
         self.next_ys = [torch.LongTensor(size)
-                        .fill_(pad).cuda(2)]
+                        .fill_(pad).cuda()]
         self.next_ys[0][0] = bos
 
         # Has EOS topped the beam yet.

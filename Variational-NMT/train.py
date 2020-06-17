@@ -127,9 +127,9 @@ def main():
 
     # Build model.
     model = model_factory(config, src_vocab, trg_vocab)
-    # if len(config.gpu_ids) > 1:
-    #     trace('Multi gpu training: ', config.gpu_ids)
-    #     model = nn.DataParallel(model, device_ids=config.gpu_ids, dim=1)
+    if len(config.gpu_ids) > 1:
+        trace('Multi gpu training: ', config.gpu_ids)
+        model = nn.DataParallel(model, device_ids=config.gpu_ids, dim=1)
 
     trace(model)
 

@@ -63,9 +63,13 @@ class Trainer(object):
             elif isinstance(self.model, NMTModel):
                 outputs, _, _ = self.model(
                         src, src_lengths, trg)
-            
-            probs = self.model.generator(
-                outputs.view(-1, outputs.size(2)))
+
+            if isinstance(self.model, nn.DataParallel):
+                probs = self.model.module.generator(
+                    outputs.view(-1, outputs.size(2)))
+            else:
+                probs = self.model.generator(
+                    outputs.view(-1, outputs.size(2)))
                 
             loss, batch_stats = self.loss_func.compute_batch_loss(
                         probs, ref, normalization, kld_loss=kld_loss)
@@ -124,7 +128,13 @@ class Trainer(object):
                 outputs, _, _ = self.model(
                         src, src_lengths, trg)
 
-            probs = self.model.generator(outputs.view(-1, outputs.size(2)))
+            if isinstance(self.model, nn.DataParallel):
+                probs = self.model.module.generator(
+                    outputs.view(-1, outputs.size(2)))
+            else:
+                probs = self.model.generator(
+                    outputs.view(-1, outputs.size(2)))
+
             loss, batch_stats = self.loss_func.compute_batch_loss(
                          probs, ref, normalization, kld_loss=kld_loss)
             
