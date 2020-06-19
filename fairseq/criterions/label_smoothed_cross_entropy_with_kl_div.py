@@ -67,7 +67,7 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
                                        - torch.div(pos_logvar.exp(), (pri_logvar.exp())))
             kl_div_list.append(kl_div)
 
-        return sum(kl_div_list)
+        return torch.stack(kl_div_list, dim=0).sum(dim=0)
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
