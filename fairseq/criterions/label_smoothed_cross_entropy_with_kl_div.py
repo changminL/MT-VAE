@@ -45,7 +45,6 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
         }
-
         KL_div = self.compute_kl_divergence(net_output[1], net_output[2])
         #KL_div = torch.clamp(KL_div, max=30.0)
         if KL_div is not None:
@@ -55,19 +54,22 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         return loss, sample_size, logging_output
 
     def compute_kl_divergence(self, pos_approx_out, prior_out):
-        kl_div_list = []
 
-        for pos_approx, prior in zip(pos_approx_out.encoder_states, prior_out.encoder_states):
-            pos_mu, pos_logvar = pos_approx
-            pri_mu, pri_logvar = prior
-            pos_mu, pos_logvar = torch.mean(pos_mu, dim=0), torch.mean(pos_logvar, dim=0)
-            pri_mu, pri_logvar = torch.mean(pri_mu, dim=0), torch.mean(pri_logvar, dim=0)
-            kl_div = - 0.5 * torch.sum(1 + (pos_logvar - pri_logvar)
-                                       - torch.div((pri_mu - pos_mu).pow(2), (pri_logvar.exp()))
-                                       - torch.div(pos_logvar.exp(), (pri_logvar.exp())))
-            kl_div_list.append(kl_div)
+        if pos_approx_out is not None and prior_out is not None:
+            kl_div_list = []
+            for pos_approx, prior in zip(pos_approx_out.encoder_states, prior_out.encoder_states):
+                pos_mu, pos_logvar = pos_approx
+                pri_mu, pri_logvar = prior
+                pos_mu, pos_logvar = torch.mean(pos_mu, dim=0), torch.mean(pos_logvar, dim=0)
+                pri_mu, pri_logvar = torch.mean(pri_mu, dim=0), torch.mean(pri_logvar, dim=0)
+                kl_div = - 0.5 * torch.sum(1 + (pos_logvar - pri_logvar)
+                                        - torch.div((pri_mu - pos_mu).pow(2), (pri_logvar.exp()))
+                                        - torch.div(pos_logvar.exp(), (pri_logvar.exp())))
+                kl_div_list.append(kl_div)
 
-        return torch.stack(kl_div_list, dim=0).sum(dim=0)
+            return torch.stack(kl_div_list, dim=0).sum(dim=0)
+        else:
+            return None
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:

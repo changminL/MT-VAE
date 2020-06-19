@@ -289,7 +289,7 @@ class TransformerCVAEModel(FairseqCVAEModel):
         if self.training:
             return decoder_out, pos_approx_out, encoder_out
         else:
-            return decoder_out
+            return decoder_out, None, None
 
     # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
     # I rewrite the get_normalized_probs from Base Class to call the
