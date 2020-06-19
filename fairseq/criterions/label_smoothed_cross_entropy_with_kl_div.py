@@ -33,6 +33,8 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+        #import pdb
+        #pdb.set_trace()
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output[0], sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
@@ -58,8 +60,8 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         for pos_approx, prior in zip(pos_approx_out.encoder_states, prior_out.encoder_states):
             pos_mu, pos_logvar = pos_approx
             pri_mu, pri_logvar = prior
-            pos_mu, pos_logvar = torch.sum(pos_mu, dim=0), torch.sum(pos_logvar, dim=0)
-            pri_mu, pri_logvar = torch.sum(pri_mu, dim=0), torch.sum(pri_logvar, dim=0)
+            pos_mu, pos_logvar = torch.mean(pos_mu, dim=0), torch.mean(pos_logvar, dim=0)
+            pri_mu, pri_logvar = torch.mean(pri_mu, dim=0), torch.mean(pri_logvar, dim=0)
             kl_div = - 0.5 * torch.sum(1 + (pos_logvar - pri_logvar)
                                        - torch.div((pri_mu - pos_mu).pow(2), (pri_logvar.exp()))
                                        - torch.div(pos_logvar.exp(), (pri_logvar.exp())))
