@@ -299,7 +299,6 @@ def validate(args, trainer, task, epoch_itr, subsets):
             ),
             default_log_format=('tqdm' if not args.no_progress_bar else 'simple'),
         )
-
         # create a new root metrics aggregator so validation metrics
         # don't pollute other aggregators (e.g., train meters)
         with metrics.aggregate(new_root=True) as agg:
