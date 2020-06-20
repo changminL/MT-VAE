@@ -27,11 +27,12 @@ def main():
                         help='path to references')
     parser.add_argument('--output', default='', metavar='FILE',
                         help='print outputs into a pretty format')
+    parser.add_argument('--num_k', type=int)
     args = parser.parse_args()
 
     if args.sys:
         #src, tgt, hypos, log_probs = load_sys(args.sys)
-        hypos = load_src(args.sys)
+        hypos = load_src(args.sys, args.num_k)
         print('pairwise BLEU: %.2f' % pairwise(hypos))
         if args.output:
             merge(src, tgt, hypos, log_probs, args.output)
@@ -49,14 +50,14 @@ def dictolist(d):
     return [i[1] for i in a]
 
 
-def load_src(paths):
+def load_src(paths, k):
     hypos = {}
     for path in paths:
         with open(path) as f:
             i = 0
             for line in f:
                 line = line.rstrip()
-                line_num = i // 3
+                line_num = i // k
                 if line_num not in hypos:
                     hypos[line_num] = []
                 hypos[line_num].append(line)
