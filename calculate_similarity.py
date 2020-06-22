@@ -4,21 +4,12 @@ import logging
 from tqdm import tqdm
 import random
 from multiprocessing import Pool, Array, Process, Value, Manager
-def cal_sim(tid):
-    file_path = '/mnt/nas2/newstest/wmt17_de_en/'
-
-    logging.info("Sentence dictionary is loading")
-    with open(file_path+'idx2text.pkl', 'rb') as f:
-        target_sentences = pickle.load(f)
-    logging.info("Sentence dictionary is loaded!")
-
-    logging.info("Embeddings are loading")
-    with open('/mnt/nas2/newstest/embeddings.pickle', 'rb') as f:
-        embeddings = pickle.load(f)
-    logging.info("Embeddings are loaded!")
+def cal_sim(tid, embeddings):
+    file_path = '/nas/newstest/wmt17_de_en/'
 
     logging.info("Similiarity is calculating")
     num_embeddings = len(embeddings)
+    embeddings = torch.tensor(embeddings)
     total_sim = []
     cand = random.sample(range(num_embeddings), 100)
     for i in tqdm(cand):
@@ -33,7 +24,7 @@ def cal_sim(tid):
         total_sim.append(i_sim)
     logging.info("Similiarity is calculated!")
 
-    with open('/mnt/nas2/newstest/sim.pkl', 'wb') as f:
+    with open('/nas/newstest/sim.pkl', 'wb') as f:
         pickle.dump(total_sim, f)
 
     import csv
@@ -61,16 +52,33 @@ def cal_sim(tid):
     logging.info("Wrote!")
     f.close()
 
-num_threads = 20
-t_id = 0
-jobs = []
-for i in range(num_threads):
-    p = Process(target=cal_sim, args=[t_id])
-    t_id += 1
-    jobs.append(p)
+if __name__ == "__main__":
+    num_threads = 100
+    t_id = 0
+    jobs = []
 
-for j in jobs:
-    j.start()
+    file_path = '/nas/newstest/wmt17_de_en/'
 
-for j in jobs:
-    j.join()
+    logging.info("Sentence dictionary is loading")
+    with open(file_path+'idx2text.pkl', 'rb') as f:
+        target_sentences = pickle.load(f)
+    logging.info("Sentence dictionary is loaded!")
+
+    logging.info("Embeddings are loading")
+    with open('/nas/newstest/embeddings.pickle', 'rb') as f:
+        embeddings = pickle.load(f)
+    logging.info("Embeddings are loaded!")
+    
+    embeddings = [e.numpy().tolist() for e in tqdm(embeddings)]
+    
+    embed = Array('d', embeddings)
+    for i in range(num_threads):
+        p = Process(target=cal_sim, args=[t_id, embed])
+        t_id += 1
+        jobs.append(p)
+
+    for j in jobs:
+        j.start()
+
+    for j in jobs:
+        j.join()
