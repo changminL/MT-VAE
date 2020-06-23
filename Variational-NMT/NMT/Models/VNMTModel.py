@@ -50,12 +50,12 @@ class VNMTModel(NMTModel):
         hidden = self.get_hidden(encoder_state)
         mu = self.context_to_mu(hidden)
         logvar = self.context_to_logvar(hidden)
-        if self.training:
-            std = logvar.mul(0.5).exp_()
-            eps = Variable(std.data.new(std.size()).normal_())
-            z = eps.mul(std).add_(mu)
-        else:
-            z = mu
+        # if self.training:
+        std = logvar.mul(0.5).exp_()
+        eps = Variable(std.data.new(std.size()).normal_())
+        z = eps.mul(std).add_(mu)
+        # else:
+            # z = mu
         return z, mu, logvar
 
 

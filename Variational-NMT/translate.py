@@ -76,33 +76,38 @@ def main():
     pred_list = []
     gold_list = []
     for batch in tqdm(data_iter):
-        outputs = translator.translate_batch(batch)
-        batch_trans = builder.from_batch_translator_output(outputs)
-        
-        for trans in batch_trans:
-            pred_score_total += trans.pred_scores[0]
-            pred_words_total += len(trans.pred_sents[0])
-            pred_list.append(trans.pred_sents[0])
 
-            gold_score_total += trans.gold_score
-            gold_words_total += len(trans.gold_sent) + 1
-            gold_list.append(trans.gold_sent)
+        # if the Model is VNMT or VRNMT repeat k generation
+        k = config.k_best if config.system != "NMT" else 1
 
-            k_best_preds = [" ".join(pred)
-                            for pred in trans.pred_sents[:config.k_best]]
-            #print(" ".join(trans.gold_sent)                         
-            pred_file.write('\n'.join(k_best_preds)+"\n")
-            ref_file.write(" ".join(trans.gold_sent)+'\n')
-            src_file.write(" ".join(trans.src_sent)+'\n')
-            if config.verbose:
-                sent_number = next(counter)
-                output = trans.log(sent_number)
-                os.write(1, output.encode('utf-8'))
+        for _ in range(k):
+            outputs = translator.translate_batch(batch)
+            batch_trans = builder.from_batch_translator_output(outputs)
+            
+            for trans in batch_trans:
+                pred_score_total += trans.pred_scores[0]
+                pred_words_total += len(trans.pred_sents[0])
+                pred_list.append(trans.pred_sents[0])
 
-                report_score('PRED', pred_score_total, pred_words_total)
-                report_score('GOLD', gold_score_total, gold_words_total)
-            if config.plot_attn:
-                plot_attn(trans.src_sent, trans.pred_sents[0], trans.attns[0].cpu())
+                gold_score_total += trans.gold_score
+                gold_words_total += len(trans.gold_sent) + 1
+                gold_list.append(trans.gold_sent)
+
+                k_best_preds = [" ".join(pred)
+                                for pred in trans.pred_sents[:config.k_best]]
+                #print(" ".join(trans.gold_sent)                         
+                pred_file.write('\n'.join(k_best_preds)+"\n")
+                ref_file.write(" ".join(trans.gold_sent)+'\n')
+                src_file.write(" ".join(trans.src_sent)+'\n')
+                if config.verbose:
+                    sent_number = next(counter)
+                    output = trans.log(sent_number)
+                    os.write(1, output.encode('utf-8'))
+
+                    report_score('PRED', pred_score_total, pred_words_total)
+                    report_score('GOLD', gold_score_total, gold_words_total)
+                if config.plot_attn:
+                    plot_attn(trans.src_sent, trans.pred_sents[0], trans.attns[0].cpu())
 
     report_bleu(gold_list, pred_list)
     report_rouge(gold_list, pred_list)
