@@ -40,7 +40,9 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         #pdb.set_trace()
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output[0], sample, reduce=reduce)
-        gsnn_loss, gsnn_nll_loss = self.compute_loss(model, net_output[1], sample, reduce=reduce)
+        gsnn_loss, gsnn_nll_loss = None, None
+        if net_output[1] is not None:
+            gsnn_loss, gsnn_nll_loss = self.compute_loss(model, net_output[1], sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
@@ -56,7 +58,8 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         if KL_div is not None:
             logging_output["kl_div"] = utils.item(KL_div.data)
             loss += self.KL_lambda * KL_div
-            loss += self.alpha * gsnn_loss
+            if gsnn_loss is not None:
+                loss += self.alpha * gsnn_loss
 
         return loss, sample_size, logging_output
 
