@@ -31,7 +31,7 @@ class BatchTranslator(object):
         self.config = config
         self.vocab = trg_vocab
         self.model = model
-        self.k_best = config.k_best if isinstance(self.model, NMTModel) else 1
+        self.k_best = config.k_best
         self.max_length = 100
         self.global_scorer = global_scorer
         self.beam_size = config.beam_size

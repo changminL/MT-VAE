@@ -57,7 +57,10 @@ def main():
     src_file = codecs.open(config.output+".src.txt", 'w', 'utf-8')
     # Sort batch by decreasing lengths of sentence required by pytorch.
     # sort=False means "Use dataset's sortkey instead of iterator's".
-   
+
+    k = config.k_best if config.system != "NMT" else 1
+    if config.system != "NMT":
+        config.k_best = 1
 
     # Translator
     scorer = GNMTGlobalScorer(config.alpha, config.beta, config.coverage_penalty,
@@ -78,7 +81,6 @@ def main():
     for batch in tqdm(data_iter):
 
         # if the Model is VNMT or VRNMT repeat k generation
-        k = config.k_best if config.system != "NMT" else 1
 
         for _ in range(k):
             outputs = translator.translate_batch(batch)
