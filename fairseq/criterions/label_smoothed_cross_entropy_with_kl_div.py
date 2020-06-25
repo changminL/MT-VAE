@@ -47,8 +47,6 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
             'nll_loss': utils.item(nll_loss.data) if reduce else nll_loss.data,
-            'gsnn_loss': utils.item(gsnn_loss.data) if reduce else gsnn_loss.data,
-            'gsnn_nll_loss': utils.item(gsnn_nll_loss.data) if reduce else gsnn_nll_loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
@@ -59,8 +57,11 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
             logging_output["kl_div"] = utils.item(KL_div.data)
             loss += self.KL_lambda * KL_div
             if gsnn_loss is not None:
+                logging_output['gsnn_loss'] = utils.item(gsnn_loss.data) if reduce else gsnn_loss.data
+                logging_output['gsnn_nll_loss'] = utils.item(gsnn_nll_loss.data) if reduce else gsnn_nll_loss.data
                 loss += self.alpha * gsnn_loss
 
+        logging_output['total_loss'] = utils.item(loss.data) if reduce else loss.data
         return loss, sample_size, logging_output
 
     def compute_kl_divergence(self, pos_approx_out, prior_out):
@@ -84,14 +85,20 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
+        total_sum = utils.item(sum(log.get('total_loss', 0) for log in logging_outputs))
         loss_sum = utils.item(sum(log.get('loss', 0) for log in logging_outputs))
         nll_loss_sum = utils.item(sum(log.get('nll_loss', 0) for log in logging_outputs))
+        gsnn_loss_sum = utils.item(sum(log.get('gsnn_loss', 0) for log in logging_outputs))
+        gsnn_nll_loss_sum = utils.item(sum(log.get('gsnn_nll_loss', 0) for log in logging_outputs))
         kl_div_loss_sum = utils.item(sum(log.get('kl_div', 0) for log in logging_outputs))
         ntokens = utils.item(sum(log.get('ntokens', 0) for log in logging_outputs))
         sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
 
+        metrics.log_scalar('total_loss', total_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('nll_loss', nll_loss_sum / ntokens / math.log(2), ntokens, round=3)
+        metrics.log_scalar('gsnn_loss', gsnn_loss_sum / sample_size / math.log(2), sample_size, round=3)
+        metrics.log_scalar('gsnn_nll_loss', gsnn_nll_loss_sum / ntokens / math.log(2), ntokens, round=3)
         metrics.log_scalar('kl_div_loss', kl_div_loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_derived('ppl', lambda meters: utils.get_perplexity(meters['nll_loss'].avg))
 
