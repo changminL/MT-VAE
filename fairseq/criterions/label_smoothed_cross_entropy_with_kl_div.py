@@ -14,9 +14,10 @@ from .label_smoothed_cross_entropy import LabelSmoothedCrossEntropyCriterion
 @register_criterion('label_smoothed_cross_entropy_with_kl_div')
 class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntropyCriterion):
 
-    def __init__(self, task, sentence_avg, label_smoothing, KL_lambda):
+    def __init__(self, task, sentence_avg, label_smoothing, KL_lambda, alpha):
         super().__init__(task, sentence_avg, label_smoothing)
         self.KL_lambda = KL_lambda
+        self.alpha = alpha
 
     @staticmethod
     def add_args(parser):
@@ -24,6 +25,8 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         LabelSmoothedCrossEntropyCriterion.add_args(parser)
         parser.add_argument('--KL-lambda', default=1.0, type=float, metavar='D',
                             help='weight for the KL-divergence loss')
+        parser.add_argument('--alpha', default=1.0, type=float, metavar='D',
+                            help='parameter for the weight of GSNN model loss')
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -37,19 +40,23 @@ class LabelSmoothedCrossEntropyCriterionWithKLDivergence(LabelSmoothedCrossEntro
         #pdb.set_trace()
         net_output = model(**sample['net_input'])
         loss, nll_loss = self.compute_loss(model, net_output[0], sample, reduce=reduce)
+        gsnn_loss, gsnn_nll_loss = self.compute_loss(model, net_output[1], sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
             'nll_loss': utils.item(nll_loss.data) if reduce else nll_loss.data,
+            'gsnn_loss': utils.item(gsnn_loss.data) if reduce else gsnn_loss.data,
+            'gsnn_nll_loss': utils.item(gsnn_nll_loss.data) if reduce else gsnn_nll_loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
         }
-        KL_div = self.compute_kl_divergence(net_output[1], net_output[2])
-        #KL_div = torch.clamp(KL_div, max=30.0)
+        KL_div = self.compute_kl_divergence(net_output[2], net_output[3])
+
         if KL_div is not None:
             logging_output["kl_div"] = utils.item(KL_div.data)
             loss += self.KL_lambda * KL_div
+            loss += self.alpha * gsnn_loss
 
         return loss, sample_size, logging_output
 
