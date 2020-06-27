@@ -475,7 +475,8 @@ class TransformerVAEDecoderLayer(nn.Module):
         x = residual + x
         if not self.normalize_before:
             x = self.self_attn_layer_norm(x)
-
+        #import pdb
+        #pdb.set_trace()
         if self.encoder_attn is not None:
             residual = x
             if self.normalize_before:

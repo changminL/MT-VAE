@@ -250,7 +250,8 @@ class TransformerCVAEModel(FairseqCVAEModel):
         encoder_out = None
         pos_approx_out = None
         gsnn_out = None
-
+        #import pdb
+        #pdb.set_trace()
         if self.training:
             encoder_out = self.encoder(
                 src_tokens,
@@ -508,10 +509,12 @@ class TransformerVAEEncoder(FairseqEncoder):
             if encoder_out.encoder_embedding is None
             else encoder_out.encoder_embedding.index_select(0, new_order)
         )
+        #import pdb
+        #pdb.set_trace()
         new_encoder_out["latent_states"] = (
             encoder_out.latent_states
             if encoder_out.latent_states is None
-            else encoder_out.latent_states.index_select(1, new_order)
+            else [latent.index_select(1, new_order) for latent in encoder_out.latent_states]
         )
         src_tokens = encoder_out.src_tokens
         if src_tokens is not None:
@@ -522,9 +525,11 @@ class TransformerVAEEncoder(FairseqEncoder):
             src_lengths = src_lengths.index_select(0, new_order)
 
         encoder_states = encoder_out.encoder_states
+        #import pdb
+        #pdb.set_trace()
         if encoder_states is not None:
             for idx, state in enumerate(encoder_states):
-                encoder_states[idx] = state.index_select(1, new_order)
+                encoder_states[idx] = [state[0].index_select(1, new_order), state[1].index_select(1, new_order)]
 
         return EncoderOut(
             encoder_out=new_encoder_out["encoder_out"],  # T x B x C
@@ -969,6 +974,8 @@ class TransformerVAEDecoder(FairseqIncrementalDecoder):
                 - the decoder's features of shape `(batch, tgt_len, embed_dim)`
                 - a dictionary with any model-specific outputs
         """
+        #import pdb
+        #pdb.set_trace()
         if alignment_layer is None:
             alignment_layer = self.num_layers - 1
 

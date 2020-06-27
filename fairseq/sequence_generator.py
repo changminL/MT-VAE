@@ -166,6 +166,8 @@ class SequenceGenerator(nn.Module):
         prefix_tokens: Optional[Tensor] = None,
         bos_token: Optional[int] = None,
     ):
+        #import pdb
+        #pdb.set_trace()
         net_input = sample["net_input"]
         src_tokens = net_input["src_tokens"]
         # length of the source text being the character length except EndOfSentence and pad
@@ -190,12 +192,17 @@ class SequenceGenerator(nn.Module):
             self.min_len <= max_len
         ), "min_len cannot be larger than max_len, please adjust these!"
         # compute the encoder output for each beam
+        #import pdb
+        #pdb.set_trace()
         encoder_outs = self.model.forward_encoder(net_input)
-
+        #import pdb
+        #pdb.set_trace()
+        encoder_outs[0] = self.model.models[0].encoder.sample(encoder_outs[0])
         # placeholder of indices for bsz * beam_size to hold tokens and accumulative scores
         new_order = torch.arange(bsz).view(-1, 1).repeat(1, beam_size).view(-1)
         new_order = new_order.to(src_tokens.device).long()
         encoder_outs = self.model.reorder_encoder_out(encoder_outs, new_order)
+
         # ensure encoder_outs is a List.
         assert encoder_outs is not None
 
