@@ -508,6 +508,11 @@ class TransformerVAEEncoder(FairseqEncoder):
             if encoder_out.encoder_embedding is None
             else encoder_out.encoder_embedding.index_select(0, new_order)
         )
+        new_encoder_out["latent_states"] = (
+            encoder_out.latent_states
+            if encoder_out.latent_states is None
+            else encoder_out.latent_states.index_select(1, new_order)
+        )
         src_tokens = encoder_out.src_tokens
         if src_tokens is not None:
             src_tokens = src_tokens.index_select(0, new_order)
@@ -526,6 +531,7 @@ class TransformerVAEEncoder(FairseqEncoder):
             encoder_padding_mask=new_encoder_out["encoder_padding_mask"],  # B x T
             encoder_embedding=new_encoder_out["encoder_embedding"],  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
+            latent_states=new_encoder_out["latent_states"],
             src_tokens=src_tokens,  # B x T
             src_lengths=src_lengths,  # B x 1
         )
