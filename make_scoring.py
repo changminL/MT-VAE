@@ -34,12 +34,20 @@ def main():
                 new_hypo.append(hypos[i])
                 new_refs.append(refs[j])
             except ValueError:
-                print(item)
+                #print(item)
+                pass
         
         refs = new_refs
         hypos = new_hypo
         del new_refs
         del new_hypo
+
+        with open('example.txt', 'w') as f:
+            for i, (ref, hypo) in enumerate(zip(refs, hypos)):
+                f.write("REF_{} : {}\n".format(i, ref))
+                for h in hypo:
+                    f.write("HYPO_{} : {}\n".format(i, h))
+
 
         if args.sys:
             multi_ref(refs, hypos)
